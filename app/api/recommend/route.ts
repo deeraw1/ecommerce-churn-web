@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || ''
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`
+const HF_KEY = process.env.HF_API_KEY || ''
+const HF_URL = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3'
 
 function fallbackInsights(customer: Record<string, number>, risk: string): string[] {
   const ins: string[] = []
@@ -22,59 +22,52 @@ function fallbackInsights(customer: Record<string, number>, risk: string): strin
   return ins.slice(0, 4)
 }
 
+function buildPrompt(customer: Record<string, number> | null, result: Record<string, unknown>, mode: string): string {
+  if (mode === 'batch') {
+    const s = result.summary as Record<string, number>
+    return `<s>[INST] You are a customer retention strategist for an e-commerce company.
+
+Batch analysis: ${result.total_customers} customers analysed, ${s.churn_count} predicted to churn (${(s.churn_rate * 100).toFixed(1)}%), average churn probability ${(s.average_probability * 100).toFixed(1)}%.
+
+Give exactly 4 strategic retention recommendations. One per line, starting with "- ". Be specific and concise. [/INST]`
+  }
+  return `<s>[INST] You are a customer retention analyst for an e-commerce company.
+
+Customer: tenure ${customer!.tenure} months, ${customer!.ordercount} orders, satisfaction ${customer!.satisfactionscore}/5, last order ${customer!.daysincelastorder} days ago, cashback $${customer!.cashbackamount}.
+Prediction: ${result.churn_prediction === 1 ? 'WILL CHURN' : 'WILL RETAIN'} — ${((result.churn_probability as number) * 100).toFixed(1)}% churn probability, ${(result.risk_level as string).toUpperCase()} risk.
+
+Give exactly 4 specific retention recommendations for this customer. One per line, starting with "- ". Be concise. [/INST]`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { customer, result, mode } = await req.json()
 
-    if (!GEMINI_KEY) {
+    if (!HF_KEY) {
       return NextResponse.json({ recommendations: fallbackInsights(customer ?? {}, result?.risk_level ?? 'medium') })
     }
 
-    let prompt = ''
+    const prompt = buildPrompt(customer, result, mode)
 
-    if (mode === 'batch') {
-      const s = result.summary
-      prompt = `You are a senior customer retention strategist for an e-commerce company.
-
-Batch Churn Analysis Results:
-- Total customers analysed: ${result.total_customers}
-- Customers predicted to churn: ${s.churn_count} (${(s.churn_rate * 100).toFixed(1)}%)
-- Customers predicted to retain: ${s.retention_count}
-- Average churn probability: ${(s.average_probability * 100).toFixed(1)}%
-
-Provide exactly 4 strategic, actionable business recommendations to reduce overall churn.
-Write one recommendation per line starting with "- ". Be specific and business-focused.`
-    } else {
-      prompt = `You are a senior customer retention analyst for an e-commerce company.
-
-Customer Profile:
-- Tenure: ${customer.tenure} months
-- Number of delivery addresses: ${customer.numberofaddress}
-- Total cashback earned: $${customer.cashbackamount}
-- Days since last order: ${customer.daysincelastorder}
-- Lifetime order count: ${customer.ordercount}
-- Satisfaction score: ${customer.satisfactionscore}/5
-
-ML Prediction:
-- Outcome: ${result.churn_prediction === 1 ? 'WILL CHURN' : 'WILL RETAIN'}
-- Churn probability: ${(result.churn_probability * 100).toFixed(1)}%
-- Risk level: ${result.risk_level.toUpperCase()}
-
-Provide exactly 4 specific, actionable retention recommendations tailored to this customer's data.
-Write one recommendation per line starting with "- ". Be concise and data-driven.`
-    }
-
-    const res = await fetch(GEMINI_URL, {
+    const res = await fetch(HF_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${HF_KEY}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 500, temperature: 0.7 },
+        inputs: prompt,
+        parameters: { max_new_tokens: 400, temperature: 0.7, return_full_text: false },
       }),
     })
 
     const data = await res.json()
-    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+    if (data.error) {
+      return NextResponse.json({ recommendations: fallbackInsights(customer ?? {}, result?.risk_level ?? 'medium') })
+    }
+
+    const text: string = Array.isArray(data) ? (data[0]?.generated_text ?? '') : (data.generated_text ?? '')
 
     const recommendations = text
       .split('\n')
@@ -88,6 +81,6 @@ Write one recommendation per line starting with "- ". Be concise and data-driven
 
     return NextResponse.json({ recommendations })
   } catch (e) {
-    return NextResponse.json({ recommendations: [], error: String(e) })
+    return NextResponse.json({ recommendations: fallbackInsights({}, 'medium'), error: String(e) })
   }
 }
