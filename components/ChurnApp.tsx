@@ -73,7 +73,8 @@ function RiskBadge({ level }: { level: string }) {
     medium: { bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)', color: '#fbbf24', label: 'MEDIUM RISK' },
     low:    { bg: 'rgba(23,192,130,0.1)', border: 'rgba(23,192,130,0.3)', color: '#17c082', label: 'LOW RISK' },
   }
-  const c = cfg[level] ?? { bg: 'rgba(138,154,184,0.1)', border: 'rgba(138,154,184,0.3)', color: '#8a9ab8', label: level.toUpperCase() }
+  const safe = level || 'low'
+  const c = cfg[safe] ?? { bg: 'rgba(138,154,184,0.1)', border: 'rgba(138,154,184,0.3)', color: '#8a9ab8', label: safe.toUpperCase() }
   return (
     <span style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.color,
       borderRadius: 20, padding: '4px 13px', fontSize: '0.72rem', fontWeight: 700,
