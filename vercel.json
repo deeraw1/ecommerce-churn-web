@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/predict.py": {
+      "runtime": "@vercel/python"
+    },
+    "api/predict-batch.py": {
+      "runtime": "@vercel/python"
+    }
+  }
+}

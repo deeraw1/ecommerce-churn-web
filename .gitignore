@@ -1,0 +1,25 @@
+# deps
+node_modules/
+.pnp
+.pnp.js
+
+# next
+.next/
+out/
+build/
+
+# env
+.env
+.env.local
+.env.production
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# misc
+.DS_Store
+*.pem
+*.log
